@@ -5,7 +5,7 @@
 ```
 # Build ansible docker container
 
-docker build -t a -f Dockfile.ansible .
+docker build -t a -f Dockerfile.ansible .
 
 docker run -ti -v $(pwd):/a a 
 
