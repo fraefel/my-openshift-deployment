@@ -1,0 +1,14 @@
+#!/usr/bin/env ansible-playbook
+---
+- hosts: all
+  connection: local
+  become: false
+  gather_facts: false
+  tasks:
+  - name: "Destroy Server"
+    hcloud_server:
+      id: "{{hcloud_id}}"
+      state: absent
+    register: return 
+  - debug:
+        msg: "{{return}}"

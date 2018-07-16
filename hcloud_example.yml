@@ -1,0 +1,106 @@
+#!/usr/bin/env ansible-playbook
+---
+- hosts: localhost
+  connection: local
+  become: false
+  gather_facts: false
+  tasks:
+    - name: "Check env variable: HCLOUD_TOKEN"
+      fail: msg="HCLOUD_TOKEN is required! Please set HCLOUD_TOKEN env. var." 
+      when: not lookup('env','HCLOUD_TOKEN')
+    - name: Generate SSH keys
+      shell: ssh-keygen -b 2048 -t rsa -f ansible.key -q -N ""
+      args:
+        creates: ansible.key
+    - hcloud_ssh_key:
+        name: ansible
+        public_key: "{{lookup('file', 'ansible.key.pub')}}"
+    - name: "Add example host to inventory"
+      add_host:
+        hostname: "example-1"
+        ansible_host_key_checking: false
+        ansible_private_key_file: ansible.key
+        ansible_remote_user: root
+
+- hosts: all
+  connection: local
+  become: false
+  gather_facts: false
+  tasks:
+  - name: "Create Server"
+    hcloud_server:
+      name: "{{ inventory_hostname }}"
+      state: present
+      # id: "{{ inventory_hostname }}"
+      image: "centos-7"
+      datacenter: nbg1-dc3
+      # 4 cpu, 16 gb ram, 160 ssd
+      server_type: "cx41"
+      ssh_keys:
+      - ansible
+      # user_data: "{{ lookup('file', 'hcloud_example_cloud-init.conf', errors='ignore') }}"
+      user_data: |
+          #cloud-config
+          # Thanks to Jens Reimann // ctron
+          # https://gist.github.com/ctron/e8af2bd108ca44cc85b7a5ba16909721
+
+          users:
+            - name: rbo
+              ssh_authorized_keys:
+                - ssh-rsa AAAAB3NzaC1yc2EAAAABIwAAAQEA0O1PmjMLgqh7140QsEMn58zEYm6gUErhpeA4mviap9ocKKylFViYbmo4Hu06pLhye7Qu6qpn0A6uEZQJum5uDNfLg1uob0AiGm2jUg4RTUWHNZILLIZ7bKRmE7LP6zucv/xS18wep2PURXfG7TNwzoQ4WNzxFh0avcx0KIeiKgJ3v2nEqYLm2vD2MmuszH9G4O2WUheSuSH9Y5Nz+nZ2P65q+DPkY9xKuZ5+6ykRNT5wwFVWAeyuMADfeX1GZYBHewxM48HIgXlMmXB7/sIJI8UmjEPESwkwM1uKX5JIIdA3mxY/bH50Xg30LogGQCaQg/1bcZMK2fcI/31EQXLoYw== rbo
+
+          growpart:
+            mode: off
+
+          runcmd:
+            - [ parted, "/dev/sda", mkpart, primary, ext2, "50GB", "100GB" ]
+            - [ parted, "/dev/sda", mkpart, primary, ext2, "100GB", "100%" ]
+            - [ growpart, "/dev/sda", "1" ]
+            - [ partx, --update, "/dev/sda" ]
+            - [ resize2fs, /dev/sda1 ]
+    register: hcloud 
+
+  - name: "Set facts to hosts"
+    set_fact: 
+      ansible_host: "{{hcloud.servers.0.public_ipv4}}"
+      hcloud_id: "{{hcloud.servers.0.id}}"
+
+  - name: Wait for admin ssh to come up
+    wait_for:
+      host: "{{hcloud.servers.0.public_ipv4}}"
+      port: 22
+      delay: 10
+      timeout: 60
+      state: started
+
+- hosts: all
+  become: true
+  gather_facts: false
+  tasks: 
+  # Read device information (always use unit when probing)
+  - parted: device=/dev/sda unit=GiB
+    register: sda_info
+  - debug:
+      var=sda_info
+  - debug:
+      msg: "Time to play with {{inventory_hostname}} : ssh -l {{ansible_remote_user}} -i {{ansible_private_key_file}} {{ ansible_host }}"
+  - name: "Wait for playing child 1 of 3 minutes"
+    wait_for: timeout=60
+    delegate_to: localhost
+  - name: "Wait for playing child 2 of 3 minutes"
+    wait_for: timeout=60
+    delegate_to: localhost
+  - name: "Wait for playing child 3 of 3 minutes"
+    wait_for: timeout=60
+    delegate_to: localhost
+
+- hosts: all
+  connection: local
+  become: false
+  gather_facts: false
+  tasks:
+  - name: "Destroy server"
+    hcloud_server:
+      id: "{{hcloud_id}}"
+      state: absent
+    register: return 
