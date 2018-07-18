@@ -1,0 +1,10 @@
+#!/bin/bash
+
+if [ -z $HCLOUD_TOKEN ] ; then
+    echo "Please set HCLOUD_TOKEN";
+    exit 1;
+fi;
+
+curl -s -H "Authorization: Bearer $HCLOUD_TOKEN" \
+    https://api.hetzner.cloud/v1/servers \
+    | jq  -r '["Status","ID","Name","IPv4"],["------","------","-------","--------------------"], (.servers[] | [.status,.id, .name, .public_net.ipv4.ip ] ) | @tsv'
