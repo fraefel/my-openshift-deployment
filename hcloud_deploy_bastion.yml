@@ -1,0 +1,167 @@
+#!/usr/bin/env ansible-playbook
+---
+- hosts: localhost
+  connection: local
+  become: false
+  gather_facts: false
+  tags:
+    - sync_only
+  tasks:
+    - name: "Check env variable: HCLOUD_TOKEN"
+      fail: msg="HCLOUD_TOKEN is required! Please set HCLOUD_TOKEN env. var." 
+      when: not lookup('env','HCLOUD_TOKEN')
+    - name: Generate SSH keys
+      shell: ssh-keygen -b 2048 -t rsa -f ansible.key -q -N ""
+      args:
+        creates: ansible.key
+    - hcloud_ssh_key:
+        name: ansible
+        public_key: "{{lookup('file', 'ansible.key.pub')}}"
+    - name: "Add example host to inventory"
+      add_host:
+        hostname: "bastion"
+        ansible_host_key_checking: false
+        ansible_private_key_file: ansible.key
+        ansible_remote_user: root
+
+- hosts: all
+  connection: local
+  become: false
+  gather_facts: false
+  tags:
+    - sync_only
+  tasks:
+  - name: "Create Server"
+    hcloud_server:
+      name: "{{ inventory_hostname }}"
+      state: present
+      # id: "{{ inventory_hostname }}"
+      image: "centos-7"
+      datacenter: nbg1-dc3
+      # 1 cpu, 2 gb ram, 20 ssd
+      server_type: "cx11"
+      ssh_keys:
+      - ansible
+    register: hcloud 
+
+  - name: Dump hcloud
+    debug:
+      var: hcloud
+
+  - name: "Set facts to hosts"
+    set_fact: 
+      ansible_host: "{{hcloud.servers.0.public_ipv4}}"
+      hcloud_id: "{{hcloud.servers.0.id}}"
+
+  - name: Wait for admin ssh to come up
+    wait_for:
+      host: "{{hcloud.servers.0.public_ipv4}}"
+      port: 22
+      delay: 1
+      timeout: 120
+      state: started
+
+- hosts: all
+  become: true
+  gather_facts: false
+  tasks: 
+    - name: Ensure group "ansible" exists
+      group:
+        name: ansible
+        gid: 1984
+        state: present
+    - name: Add ansible user
+      user:
+        name: ansible
+        comment: Ansible - OpenShift install user
+        uid: 1984
+        group: ansible
+
+    - name: Set authorized key taken from file
+      authorized_key:
+        state: present
+        user: ansible
+        key: "{{ lookup('file', 'ansible.key.pub') }}"
+
+    - name: Grant sudo without password for ansible user
+      lineinfile:
+        path: /etc/sudoers
+        state: present
+        line: 'ansible ALL=(ALL) NOPASSWD: ALL'
+
+    - name: create /home/ansible/.ssh
+      become: false
+      file:
+        path: /home/ansible/.ssh
+        state: directory
+        owner: ansible
+        group: ansible
+        mode: 0700
+ 
+    - name: install ssh private key
+      become: false
+      copy:
+        mode: 0600
+        owner: ansible
+        group: ansible
+        src: ansible.key
+        dest: /home/ansible/.ssh/id_rsa
+    - name: install /home/ansible/.ssh/config
+      become: false
+      blockinfile:
+        create: yes
+        owner: ansible
+        group: ansible
+        mode: 0600
+        dest: /home/ansible/.ssh/config
+        block: |
+          Host *
+            StrictHostKeyChecking no
+
+    - name: install needed packages
+      yum: name={{ item }} state=latest
+      with_items:
+        - wget
+        - git
+        - net-tools
+        - bind-utils
+        - yum-utils
+        - iptables-services
+        - bridge-utils
+        - bash-completion
+        - kexec-tools
+        - sos
+        - psacct
+        - epel-release
+        - tmux
+        - telnet
+        - vim
+
+    - file:
+        path: "/home/ansible/my-openshift-deployment"
+        state: directory
+        owner: "ansible"
+        mode: 0755
+      tags:
+        - sync_only
+
+    - name: sync git repo
+      become: false
+      synchronize:
+        delete: yes
+        src: "./"
+        dest: "/home/ansible/my-openshift-deployment"
+      tags:
+        - sync_only
+
+    - name: Change owner
+      file:
+        path: /home/ansible/my-openshift-deployment
+        owner: ansible
+        group: ansible
+        recurse: true
+      tags:
+        - sync_only
+
+    - debug:
+        msg: "Time to play with {{inventory_hostname}} : ssh -l {{ansible_remote_user}} -i {{ansible_private_key_file}} {{ ansible_host }}"

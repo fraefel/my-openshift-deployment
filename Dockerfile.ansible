@@ -4,7 +4,7 @@ ARG hcloud_name=hcloud-ansible_${hcloud_version}_linux_386
 ARG hcloud_mirror=https://github.com/thetechnick/hcloud-ansible/releases/download/${hcloud_version}/${hcloud_name}.zip
 ENV ANSIBLE_LIBRARY=/opt/${hcloud_name}
 
-RUN yum install -y ansible wget unzip openssh-clients &&\
+RUN yum install -y ansible wget unzip openssh-clients rsync &&\
     wget ${hcloud_mirror} &&\
     unzip ${hcloud_name}.zip -d /opt/${hcloud_name} &&\
     rm ${hcloud_name}.zip
