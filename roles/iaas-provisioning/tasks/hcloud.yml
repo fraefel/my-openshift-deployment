@@ -7,6 +7,9 @@
     image: "{{ iaas_image }}"
     server_type: "{{ iaas_machine_size }}" 
     datacenter: "{{ iaas_datacenter }}"
+    ssh_keys:
+      - ansible
+    user_data: "{{ lookup('file', 'files/cloud-init.hcloud.conf') }}"
   register: return
 
 - set_fact:
@@ -16,3 +19,11 @@
   template: 
     src: templates/host_var.hcloud.j2
     dest: "{{inventory_dir}}/host_vars/{{ inventory_hostname }}"
+
+- name: Wait for ssh to come up
+  wait_for:
+    host: "{{hcloud.public_ipv4}}"
+    port: 22
+    delay: 1
+    timeout: 120
+    state: started
