@@ -1,0 +1,16 @@
+# hcloud data:
+#     "hcloud": {
+#                 "datacenter": "nbg1-dc3",
+#                 "id": 887821,
+#                 "image": "",
+#                 "location": "nbg1",
+#                 "name": "bastion",
+#                 "public_ipv4": "195.201.137.148",
+#                 "public_ipv6": "2a01:4f8:1c1c:13f1::/64",
+#                 "server_type": "cx11",
+#                 "status": "running"
+#             }
+# 
+ansible_host: {{ hcloud.public_ipv4 }}
+openshift_hostname: {{ hcloud.name }}
+

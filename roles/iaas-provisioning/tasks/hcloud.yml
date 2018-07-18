@@ -1,0 +1,18 @@
+---
+
+- name: "Create server"
+  hcloud_server:
+    state: present
+    name: "{{ inventory_hostname }}"
+    image: "{{ iaas_image }}"
+    server_type: "{{ iaas_machine_size }}" 
+    datacenter: "{{ iaas_datacenter }}"
+  register: return
+
+- set_fact:
+    hcloud: "{{ return.servers.0 }}"
+
+- name: create host_vars file
+  template: 
+    src: templates/host_var.hcloud.j2
+    dest: "{{inventory_dir}}/host_vars/{{ inventory_hostname }}"

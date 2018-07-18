@@ -1,0 +1,33 @@
+#!/usr/bin/env ansible-playbook
+---
+- hosts: all[0]
+  gather_facts: false
+  connection: local
+  serial: 1
+  become: false
+  pre_tasks:
+    - name: Delete generated files in host_vars/
+      file:
+        state: absent
+        path: "{{ item }}"
+      with_fileglob: "{{ inventory_dir }}/host_vars/[!README]*"
+    - name: Delete generated files
+      file:
+        state: absent
+        path: "{{ item }}"
+      with_items:
+        - etc_hosts.generated
+        - group_vars/OSEv3
+  # roles:
+  #  - iaas-initial-setup
+  tags:
+    - iaas-initial-setup
+
+- hosts: all
+  gather_facts: false
+  connection: local
+  become: false
+  tags:
+    - iaas-provisioning
+  roles:
+    - iaas-provisioning
